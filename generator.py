@@ -100,39 +100,49 @@ class GEN_BLOCK(nn.Module):
       return x
       
 class GENERATOR(nn.Module):
-  def __init__(self,latent_dim,mapping_layers,batch):
+  def __init__(self,latent_dim,mapping_layers,batch,num_blocks):
     super().__init__()
+    
+    self.intial_depth = 0
+    self.num_blocks = num_blocks
+    self.latent_dim_blocks = [256,256,128,64,32,16,8]
+    
     self.mapping = MAPPING(input_size=latent_dim,output_size=latent_dim,layers=mapping_layers)
-    self.first_gen_block = GEN_BLOCK(latent_dim,512,512,batch,first_block=True)
     
-    self.block2 = GEN_BLOCK(latent_dim,512,512,batch,first_block=False)
-    self.block3 = GEN_BLOCK(latent_dim,512,512,batch,first_block=False)
-    self.block4 = GEN_BLOCK(latent_dim,512,256,batch,first_block=False)
+    self.first_gen_block = GEN_BLOCK(latent_dim,self.latent_dim_blocks[0],self.latent_dim_blocks[0],batch,first_block=True)
     
-    self.block5 = GEN_BLOCK(latent_dim,256,128,batch,first_block=False)
-    self.block6 = GEN_BLOCK(latent_dim,128,64,batch,first_block=False)
-    self.block7 = GEN_BLOCK(latent_dim,64,32,batch,first_block=False)
-    self.block8 = GEN_BLOCK(latent_dim,32,16,batch,first_block=False)
+    self.final_layers = nn.ModuleList(
+      [nn.Conv2d(self.latent_dim_blocks[i],3,kernel_size=1,stride=1) for i in range(self.num_blocks)]
+    )
     
-    self.final_layer = nn.Conv2d(16,3,kernel_size=1,stride=1)
+    self.blocks_list = nn.ModuleList([GEN_BLOCK(latent_dim,self.latent_dim_blocks[i],self.latent_dim_blocks[i+1],batch,first_block=False) for i in range(num_blocks-1)])
+    
+  
+  def grow_gen(self):
+    if self.intial_depth < self.num_blocks-1:
+      self.intial_depth +=1
     
   def forward(self,z):
+
     w = self.mapping(z)
     x = self.first_gen_block(w)
     
-    x = self.block2(w,x)
-    x = self.block3(w,x)
-    x = self.block4(w,x)
-    x = self.block5(w,x)
-    x = self.block6(w,x)
-    x = self.block7(w,x)
-    x = self.block8(w,x)
+    for blocks_idx in range(self.intial_depth):
+      x = self.blocks_list[blocks_idx](w,x)
     
-    return self.final_layer(x)
+    return self.final_layers[self.intial_depth](x)
     
-from torchsummary import summary
-model = GENERATOR(512,8,1)
-summary(model)
+# for checking
+# from torchsummary import summary
+# model = GENERATOR(256,8,1,7)
+# summary(model)
+
+# for i in range(7):
+#   img = torch.randn(1,256)
+#   print('image',img.shape)
+#   print('block..',i+1)
+#   print(model(img).shape)
+#   model.grow_gen()
 
     
     
